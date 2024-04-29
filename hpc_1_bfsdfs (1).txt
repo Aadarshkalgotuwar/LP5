@@ -1,0 +1,115 @@
+#include <iostream>
+#include <vector>
+#include <stack>
+#include <queue>
+#include <omp.h>
+#include <chrono>
+using namespace std;
+
+void BFS(const vector<vector<int>> &adjacencylist, vector<bool> &visited, queue<int> &q)
+{
+    while (!q.empty())
+    {
+        int vertex = q.front();
+        q.pop();
+        cout << vertex << " ";
+
+#pragma omp parallel for 
+        for (int i = 0; i < adjacencylist[vertex].size(); ++i)
+        //This loop iterates over the neighbors of the current vertex in the graph's adjacency list.
+        {
+            int neighbour = adjacencylist[vertex][i];
+            if (!visited[neighbour])  //Checks if the neighbor vertex neighbour has not been visited yet
+            {
+#pragma omp critical // Ensure only one thread modifies visited 
+//This directive creates a critical section, ensuring that only one thread at a time can execute the enclosed
+//block of code. It prevents race conditions when multiple threads try to modify shared data concurrently.
+                {
+                    visited[neighbour] = true;  // indicating that it has been visited.
+                    q.push(neighbour);
+                }
+            }
+        }
+    }
+}
+
+void DFS(const vector<vector<int>> &adjacencylist, vector<bool> &visited, stack<int> &s)
+{
+    while (!s.empty())
+    {
+        int vertex = s.top();
+        s.pop();
+        cout << vertex << " ";
+
+#pragma omp parallel for // Parallelize the loop
+        for (int i = 0; i < adjacencylist[vertex].size(); ++i)
+        {
+            int neighbour = adjacencylist[vertex][i];
+            if (!visited[neighbour])
+            {
+#pragma omp critical // Ensure only one thread modifies visited
+                {
+                    visited[neighbour] = true;
+                    s.push(neighbour);
+                }
+            }
+        }
+    }
+}
+
+int main()
+{
+    int nvertices, nedges;
+    cout << "Enter the number of vertices: ";
+    cin >> nvertices;
+    cout << "Enter the number of edges: ";
+    cin >> nedges;
+
+    vector<vector<int>> adjacencylist(nvertices);
+
+    cout << "Enter the edges in (source destination) format: ";
+    for (int i = 0; i < nedges; i++)
+    {
+        int u, v;  //source and destination vertices of an edge
+        cin >> u >> v;
+        adjacencylist[u].push_back(v);  //there is an edge from u to v.
+        adjacencylist[v].push_back(u); //as the graph is undirected and there is also an edge from v to u.
+    }
+
+    int startvertex;
+    cout << "Enter the starting vertex: ";
+    cin >> startvertex;
+
+    // Measure BFS traversal time
+    cout << "BFS traversal is: ";
+    vector<bool> visitedBFS(nvertices, false);
+    queue<int> q;
+    visitedBFS[startvertex] = true;
+    q.push(startvertex);
+    auto start_bfs = chrono::steady_clock::now();
+    BFS(adjacencylist, visitedBFS, q);
+    auto end_bfs = chrono::steady_clock::now();
+    cout << endl;
+    auto duration_bfs = chrono::duration_cast<chrono::microseconds>(end_bfs - start_bfs);
+    //The result is converted to microseconds using chrono::duration_cast.
+    
+    cout << "Time taken for BFS traversal: " << duration_bfs.count() << " microseconds" << endl;
+    cout << "Speedup BFS: " << static_cast<double>(start_bfs.time_since_epoch().count()) / end_bfs.time_since_epoch().count() << endl;
+
+    // Measure DFS traversal time
+    cout << "DFS traversal is: ";
+    vector<bool> visitedDFS(nvertices, false);
+    stack<int> s;
+    visitedDFS[startvertex] = true;
+    s.push(startvertex);
+    auto start_dfs = chrono::steady_clock::now();
+    DFS(adjacencylist, visitedDFS, s);
+    auto end_dfs = chrono::steady_clock::now();
+    cout << endl;
+    auto duration_dfs = chrono::duration_cast<chrono::microseconds>(end_dfs - start_dfs);
+    
+    cout << "Time taken for DFS traversal: " << duration_dfs.count() << " microseconds" << endl;
+    cout << "Speedup DFS: " << static_cast<double>(start_dfs.time_since_epoch().count()) / end_dfs.time_since_epoch().count() << endl;
+
+    return 0;
+}

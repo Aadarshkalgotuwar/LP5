@@ -1,0 +1,126 @@
+#include <iostream>
+#include <climits>
+// limits of integral types, which provides constants for the maximum and minimum values of different data types.
+#include <cstdlib>
+// provides functions like memory allocation (malloc, free) and random number generation (rand, srand
+#include <chrono>
+//measuring time durations and managing time points.
+#include <omp.h>
+using namespace std;
+
+__global__ void add(int* A, int* B, int* C, int size) {
+    //A: Pointer to the first input array.
+    //B: Pointer to the second input array.
+    //C: Pointer to the output array.
+    //size: The size of the arrays.
+
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    //This line calculates the global thread index (tid) using the CUDA thread indexing formula. 
+    //It computes the unique index for each thread based on its block index (blockIdx.x), 
+    //block dimension (blockDim.x), and thread index within the block (threadIdx.x).
+
+    if (tid < size) {
+        //This conditional statement ensures that each thread operates only on valid elements within the array.
+        //It checks if the global thread index tid is less than the total size of the arrays (size). 
+        //Threads with indices beyond the array size do not perform any computation.
+        
+        C[tid] = A[tid] + B[tid];
+        //each thread performs element-wise addition of the corresponding elements from arrays A and B. 
+        //The result is stored in the corresponding location of the output array C.
+    }
+}
+
+void addS(int* A, int* B, int* C, int size) {
+    //element wise addition
+    for(int i=0;i<size;i++){
+    	C[i] = A[i] + B[i];
+    }
+
+}
+
+
+void initialize(int* vector, int size) {
+    //This function initializes an integer array with random values. 
+    //The % 1000 operation limits the random values to the range [0, 999].
+    for (int i = 0; i < size; i++) {
+        vector[i] = rand() % 1000;
+    }
+}
+
+void print(int* vector, int size) {
+    for (int i = 0; i < size; i++) {
+        cout << vector[i] << " ";
+    }
+    cout << endl;
+}
+
+int main() {
+    int N = 10000;
+    int* A, * B, * C, *D;
+
+    int vectorSize = N;
+    size_t vectorBytes = vectorSize * sizeof(int);
+
+    A = new int[vectorSize];
+    B = new int[vectorSize];
+    C = new int[vectorSize];
+    D = new int[vectorSize];
+    
+    initialize(A, vectorSize);
+    initialize(B, vectorSize);
+
+    cout << "Vector A: ";
+    print(A, N);
+    cout << "Vector B: ";
+    print(B, N);
+    
+    auto startSeq = chrono::steady_clock::now();
+    // sequential 
+    addS(A,B,D,N);
+    auto endSeq = chrono::steady_clock::now();
+    chrono::duration<double, micro> fp = endSeq - startSeq;
+    cout << "Sequential Time: " << fp.count() << " microseconds" << endl;
+    
+
+    int* X, * Y, * Z;
+    cudaMalloc(&X, vectorBytes);
+    cudaMalloc(&Y, vectorBytes);
+    cudaMalloc(&Z, vectorBytes);
+
+    cudaMemcpy(X, A, vectorBytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(Y, B, vectorBytes, cudaMemcpyHostToDevice);
+    
+    
+    auto startParallel = chrono::steady_clock::now();
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+
+    add<<<blocksPerGrid, threadsPerBlock>>>(X, Y, Z, N);
+    
+    cudaMemcpy(C, Z, vectorBytes, cudaMemcpyDeviceToHost);
+    
+    auto endParallel = chrono::steady_clock::now();
+    chrono::duration<double, micro> fp1 = endParallel - startParallel;
+    cout << "Parallel Time: " << fp1.count() << " microseconds" << endl;
+    // cout << "Addition: ";
+    // print(C, N);
+    
+    double SortSpeedup = fp.count() / fp1.count();
+    cout << "Speedup : " << SortSpeedup << endl;
+    for(int i =0;i<N;i++){
+        if(C[i]!=D[i]){
+            cout<<"Wrong at "<<i<<endl;
+        }
+    }
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    cudaFree(X);
+    cudaFree(Y);
+    cudaFree(Z);
+
+    return 0;
+}
